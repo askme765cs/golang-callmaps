@@ -112,17 +112,38 @@ jobs:
 
       - name: Enumerate supported Go versions
         run: |
-          echo "Supported Go versions:" > release_body.txt
+          echo "## Supported Go Versions" > release_body.txt
           echo "" >> release_body.txt
           
-          # Extract unique Go versions from map files, excluding common_calling_func.txt
-          ls maps/*.txt | grep -v "common_calling_func.txt" | sed 's/.*_go\([0-9.]*\)\.txt/\1/' | sort -u | while read version; do
-            echo "- Go $version" >> release_body.txt
-          done
+          # Extract unique Go versions and format them in compact lines
+          echo "**Windows x64 (AMD64)**: Windows AMD64 builds" >> release_body.txt
+          echo "**Windows x86 (386)**: Windows 32-bit builds" >> release_body.txt
+          echo "" >> release_body.txt
+          
+          # Group versions by major version for better readability
+          ls maps/*.txt | grep -v "common_calling_func.txt" | sed 's/.*_go\([0-9.]*\)\.txt/\1/' | sort -u | sort -V | awk -F. '{
+            versions[$0] = 1
+            major_versions[$1]++
+          } END {
+            for (major in major_versions) {
+              if (major != "") {
+                printf "**Go %s.x**: ", major
+                first = 1
+                for (ver in versions) {
+                  if (index(ver, major ".") == 1) {
+                    if (!first) printf ", "
+                    printf ver
+                    first = 0
+                  }
+                }
+                printf "\n"
+              }
+            }
+          }' >> release_body.txt
           
           echo "" >> release_body.txt
-          echo "This zip package contains call maps for all supported versions listed above." >> release_body.txt
-          echo "Latest supported version: Go ${{ github.event.inputs.go_version || '1.25.0' }}" >> release_body.txt
+          echo "## Latest Version" >> release_body.txt
+          echo "**Go ${{ github.event.inputs.go_version || '1.25.0' }}** - This release includes support for the latest Go version." >> release_body.txt
           echo "" >> release_body.txt
           echo "## File Format" >> release_body.txt
           echo "Each call map file follows the format: \`address|caller|source:line|callee1|callee2|...\`" >> release_body.txt
