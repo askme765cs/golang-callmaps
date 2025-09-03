@@ -7,6 +7,9 @@ on:
         description: 'New Go version to support (e.g., 1.26.1)'
         required: true
 
+permissions:
+  contents: write
+
 jobs:
   build-and-commit:
     runs-on: ubuntu-latest
