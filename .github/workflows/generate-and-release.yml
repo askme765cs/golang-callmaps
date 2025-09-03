@@ -1,0 +1,152 @@
+name: Generate, Commit, and Release Go Call Maps
+
+on:
+  workflow_dispatch:
+    inputs:
+      go_version:
+        description: 'New Go version to support (e.g., 1.26.1)'
+        required: true
+
+jobs:
+  build-and-commit:
+    runs-on: ubuntu-latest
+    outputs:
+      go_version_tag: go${{ github.event.inputs.go_version || '1.25.0' }}
+    steps:
+      - name: Checkout code (including existing maps)
+        uses: actions/checkout@v4
+        with:
+          # Need PAT for pushing commits and tags
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Set up Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ github.event.inputs.go_version || '1.25.0' }}
+
+      - name: Set up Java environment
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Ghidra
+        uses: antoniovazquezblanco/setup-ghidra@v2.0.12
+        with:
+          version: '11.4.2'
+
+      - name: Create output directory
+        run: |
+          mkdir -p output
+          echo "OUTPUT_DIR=$(pwd)/output" >> $GITHUB_ENV
+
+      - name: Set Ghidra environment variables
+        run: |
+          echo "GHIDRA_HOME=$GHIDRA_INSTALL_DIR" >> $GITHUB_ENV
+          echo "$GHIDRA_INSTALL_DIR/support" >> $GITHUB_PATH
+
+      - name: Build Go binary (Windows AMD64)
+        run: |
+          cd go-debug-example
+          GOOS=windows GOARCH=amd64 go build -o go_debug_app_amd64.exe -gcflags="all=-N -l" .
+          cd ..
+
+      - name: Build Go binary (Windows 386)
+        run: |
+          cd go-debug-example
+          GOOS=windows GOARCH=386 go build -o go_debug_app_386.exe -gcflags="all=-N -l" .
+          cd ..
+
+      - name: Run Ghidra Headless analysis (Windows AMD64)
+        run: |
+          echo "Running Ghidra analysis (Windows AMD64)..."
+          PROJECT_DIR="/tmp/ghidra_project_windows_amd64"
+          mkdir -p "$PROJECT_DIR"
+          
+          "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" "$PROJECT_DIR" TempGoProject \
+            -import "go-debug-example/go_debug_app_amd64.exe" \
+            -postScript generate_callmap.py "$OUTPUT_DIR" \
+            -scriptPath "scripts" \
+            -deleteProject
+
+      - name: Run Ghidra Headless analysis (Windows 386)
+        run: |
+          echo "Running Ghidra analysis (Windows 386)..."
+          PROJECT_DIR="/tmp/ghidra_project_windows_386"
+          mkdir -p "$PROJECT_DIR"
+          
+          "$GHIDRA_INSTALL_DIR/support/analyzeHeadless" "$PROJECT_DIR" TempGoProject \
+            -import "go-debug-example/go_debug_app_386.exe" \
+            -postScript generate_callmap.py "$OUTPUT_DIR" \
+            -scriptPath "scripts" \
+            -deleteProject
+
+      - name: List generated files
+        run: |
+          echo "Generated files:"
+          ls -la output/
+
+      - name: Commit new files to repository
+        run: |
+          mkdir -p maps
+          cp ./output/*.txt maps/
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add maps/
+          if ! git diff --staged --quiet; then
+            git commit -m "feat: Add call maps for Go ${{ github.event.inputs.go_version || '1.25.0' }}"
+            git push
+          else
+            echo "No new call map files to commit."
+          fi
+
+  create-and-update-tags:
+    needs: build-and-commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (including newly committed files)
+        uses: actions/checkout@v4
+        with:
+          # Need PAT for pushing tags
+          token: ${{ secrets.PAT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Package all call maps
+        run: zip -r callmaps-bundle.zip maps/
+
+      - name: Enumerate supported Go versions
+        run: |
+          echo "Supported Go versions:" > release_body.txt
+          echo "" >> release_body.txt
+          
+          # Extract unique Go versions from map files, excluding common_calling_func.txt
+          ls maps/*.txt | grep -v "common_calling_func.txt" | sed 's/.*_go\([0-9.]*\)\.txt/\1/' | sort -u | while read version; do
+            echo "- Go $version" >> release_body.txt
+          done
+          
+          echo "" >> release_body.txt
+          echo "This zip package contains call maps for all supported versions listed above." >> release_body.txt
+          echo "Latest supported version: Go ${{ github.event.inputs.go_version || '1.25.0' }}" >> release_body.txt
+          echo "" >> release_body.txt
+          echo "## File Format" >> release_body.txt
+          echo "Each call map file follows the format: \`address|caller|source:line|callee1|callee2|...\`" >> release_body.txt
+          echo "" >> release_body.txt
+          echo "## Usage" >> release_body.txt
+          echo "Extract the zip file and use the appropriate call map file for your Go version and architecture." >> release_body.txt
+
+      - name: Create Release with Go version name
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build-and-commit.outputs.go_version_tag }}
+          name: "Call Maps supporting up to Go ${{ github.event.inputs.go_version || '1.25.0' }}"
+          body_path: release_body.txt
+          files: callmaps-bundle.zip
+          prerelease: false
+          generate_release_notes: true
+
+      - name: Update latest tag to point to newest Release
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git tag -f latest ${{ needs.build-and-commit.outputs.go_version_tag }}
+          git push -f origin latest
