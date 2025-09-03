@@ -144,5 +144,5 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git tag -f latest ${{ needs.build-and-commit.outputs.go_version_tag }}
+          git tag -f latest HEAD
           git push -f origin latest
