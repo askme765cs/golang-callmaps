@@ -15,9 +15,6 @@ jobs:
     steps:
       - name: Checkout code (including existing maps)
         uses: actions/checkout@v4
-        with:
-          # Need PAT for pushing commits and tags
-          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Set up Go environment
         uses: actions/setup-go@v5
@@ -106,10 +103,6 @@ jobs:
     steps:
       - name: Checkout code (including newly committed files)
         uses: actions/checkout@v4
-        with:
-          # Need PAT for pushing tags
-          token: ${{ secrets.PAT_TOKEN }}
-          fetch-depth: 0
 
       - name: Package all call maps
         run: zip -r callmaps-bundle.zip maps/
