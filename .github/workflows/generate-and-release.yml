@@ -160,3 +160,13 @@ jobs:
           git fetch --tags
           git tag -f latest ${{ needs.build-and-commit.outputs.go_version_tag }}
           git push -f origin latest
+
+      - name: Create Latest Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: latest
+          name: "Latest Call Maps"
+          body_path: release_body.txt
+          files: callmaps-bundle.zip
+          prerelease: false
+          generate_release_notes: false
