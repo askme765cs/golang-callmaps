@@ -134,7 +134,7 @@ jobs:
           }' >> release_body.txt
           
           echo "" >> release_body.txt
-          echo "## Latest Version" >> release_body.txt
+          echo "## latest Version" >> release_body.txt
           echo "**Go ${{ github.event.inputs.go_version || '1.25.0' }}** - This release includes support for the latest Go version." >> release_body.txt
           echo "" >> release_body.txt
           echo "## File Format" >> release_body.txt
@@ -157,5 +157,6 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git fetch --tags
           git tag -f latest ${{ needs.build-and-commit.outputs.go_version_tag }}
           git push -f origin latest
