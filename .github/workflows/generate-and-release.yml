@@ -100,6 +100,17 @@ jobs:
             echo "No new call map files to commit."
           fi
 
+      - name: Package all call maps including new files
+        run: |
+          git pull
+          zip -r callmaps-bundle.zip maps/
+
+      - name: Upload callmaps bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: callmaps-bundle
+          path: callmaps-bundle.zip
+
   create-and-update-tags:
     needs: build-and-commit
     runs-on: ubuntu-latest
@@ -107,8 +118,11 @@ jobs:
       - name: Checkout code (including newly committed files)
         uses: actions/checkout@v4
 
-      - name: Package all call maps
-        run: zip -r callmaps-bundle.zip maps/
+      - name: Download callmaps bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: callmaps-bundle
+          path: .
 
       - name: Enumerate supported Go versions
         run: |
